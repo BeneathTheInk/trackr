@@ -7,7 +7,7 @@
  * @namespace Tracker
  * @summary The namespace for Tracker-related methods.
  */
-Tracker = {};
+Tracker = module.exports = {};
 
 // http://docs.meteor.com/#tracker_active
 
@@ -103,9 +103,13 @@ var throwFirstError = false;
 
 var afterFlushCallbacks = [];
 
+// controls the deferral
+Tracker.nextTick = typeof process !== "undefined" ? process.nextTick : 
+  function (f) { setTimeout(f, 0); };
+
 var requireFlush = function () {
   if (! willFlush) {
-    setTimeout(Tracker.flush, 0);
+    Tracker.nextTick(Tracker.flush);
     willFlush = true;
   }
 };
@@ -126,7 +130,7 @@ var constructingComputation = false;
  * computation.
  * @instancename computation
  */
-Tracker.Computation = function (f, parent) {
+Tracker.Computation = function (f, parent, ctx) {
   if (! constructingComputation)
     throw new Error(
       "Tracker.Computation constructor is private; use Tracker.autorun");
@@ -176,6 +180,7 @@ Tracker.Computation = function (f, parent) {
   self._parent = parent;
   self._func = f;
   self._recomputing = false;
+  self._context = ctx || null;
 
   var errored = true;
   try {
@@ -195,7 +200,7 @@ Tracker.Computation = function (f, parent) {
  * @locus Client
  * @param {Function} callback Function to be called on invalidation. Receives one argument, the computation that was invalidated.
  */
-Tracker.Computation.prototype.onInvalidate = function (f) {
+Tracker.Computation.prototype.onInvalidate = function (f, ctx) {
   var self = this;
 
   if (typeof f !== 'function')
@@ -203,10 +208,10 @@ Tracker.Computation.prototype.onInvalidate = function (f) {
 
   if (self.invalidated) {
     Tracker.nonreactive(function () {
-      withNoYieldsAllowed(f)(self);
+      withNoYieldsAllowed(f).call(ctx !== void 0 ? ctx : self._context, self);
     });
   } else {
-    self._onInvalidateCallbacks.push(f);
+    self._onInvalidateCallbacks.push({ fn: f, ctx: ctx });
   }
 };
 
@@ -232,7 +237,7 @@ Tracker.Computation.prototype.invalidate = function () {
     // self.invalidated === true.
     for(var i = 0, f; f = self._onInvalidateCallbacks[i]; i++) {
       Tracker.nonreactive(function () {
-        withNoYieldsAllowed(f)(self);
+        withNoYieldsAllowed(f.fn).call(f.ctx !== void 0 ? f.ctx : self._context, self);
       });
     }
     self._onInvalidateCallbacks = [];
@@ -261,7 +266,7 @@ Tracker.Computation.prototype._compute = function () {
   var previousInCompute = inCompute;
   inCompute = true;
   try {
-    withNoYieldsAllowed(self._func)(self);
+    withNoYieldsAllowed(self._func).call(self._context, self);
   } finally {
     setCurrentComputation(previous);
     inCompute = previousInCompute;
@@ -411,9 +416,9 @@ Tracker.flush = function (_opts) {
       if (afterFlushCallbacks.length) {
         // call one afterFlush callback, which may
         // invalidate more computations
-        var func = afterFlushCallbacks.shift();
+        var cb = afterFlushCallbacks.shift();
         try {
-          func();
+          cb.fn.call(cb.ctx);
         } catch (e) {
           _throwOrLog("afterFlush", e);
         }
@@ -447,12 +452,12 @@ Tracker.flush = function (_opts) {
  * @param {Function} runFunc The function to run. It receives one argument: the Computation object that will be returned.
  * @returns {Tracker.Computation}
  */
-Tracker.autorun = function (f) {
+Tracker.autorun = function (f, ctx) {
   if (typeof f !== 'function')
     throw new Error('Tracker.autorun requires a function argument');
 
   constructingComputation = true;
-  var c = new Tracker.Computation(f, Tracker.currentComputation);
+  var c = new Tracker.Computation(f, Tracker.currentComputation, ctx);
 
   if (Tracker.active)
     Tracker.onInvalidate(function () {
@@ -474,11 +479,11 @@ Tracker.autorun = function (f) {
  * @locus Client
  * @param {Function} func A function to call immediately.
  */
-Tracker.nonreactive = function (f) {
+Tracker.nonreactive = function (f, ctx) {
   var previous = Tracker.currentComputation;
   setCurrentComputation(null);
   try {
-    return f();
+    return f.call(ctx);
   } finally {
     setCurrentComputation(previous);
   }
@@ -491,11 +496,11 @@ Tracker.nonreactive = function (f) {
  * @locus Client
  * @param {Function} callback A callback function that will be invoked as `func(c)`, where `c` is the computation on which the callback is registered.
  */
-Tracker.onInvalidate = function (f) {
+Tracker.onInvalidate = function (f, ctx) {
   if (! Tracker.active)
     throw new Error("Tracker.onInvalidate requires a currentComputation");
 
-  Tracker.currentComputation.onInvalidate(f);
+  Tracker.currentComputation.onInvalidate(f, ctx);
 };
 
 // http://docs.meteor.com/#tracker_afterflush
@@ -505,7 +510,7 @@ Tracker.onInvalidate = function (f) {
  * @locus Client
  * @param {Function} callback A function to call at flush time.
  */
-Tracker.afterFlush = function (f) {
-  afterFlushCallbacks.push(f);
+Tracker.afterFlush = function (f, ctx) {
+  afterFlushCallbacks.push({ fn: f, ctx: ctx });
   requireFlush();
 };
