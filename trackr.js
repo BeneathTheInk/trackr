@@ -479,6 +479,7 @@ Trackr.autorun = function (f, ctx) {
  * @locus Client
  * @param {Function} func A function to call immediately.
  */
+Trackr.nonReactive = 
 Trackr.nonreactive = function (f, ctx) {
 	var previous = Trackr.currentComputation;
 	setCurrentComputation(null);
@@ -487,6 +488,14 @@ Trackr.nonreactive = function (f, ctx) {
 	} finally {
 		setCurrentComputation(previous);
 	}
+};
+
+// like nonreactive but makes a function
+Trackr.nonReactable = 
+Trackr.nonreactable = function (f, ctx) {
+	return function() {
+		return Trackr.nonreactive(f, ctx);
+	};
 };
 
 // http://docs.meteor.com/#tracker_oninvalidate
