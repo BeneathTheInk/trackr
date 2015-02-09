@@ -1,9 +1,38 @@
 {
 	"name": "trackr",
 	"version": "1.0.0",
+	"description": "A fork of Meteor Tracker.",
 	"main": "./trackr.js",
+	"publishConfig": {
+		"registry": "http://registry.npmjs.org"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/BeneathTheInk/trackr.git"
+	},
 	"devDependencies": {
 		"chai": "~1.10.0",
+		"grunt": "~0.4.5",
+		"grunt-browserify": "~3.3.0",
+		"grunt-contrib-clean": "~0.6.0",
+		"grunt-contrib-uglify": "~0.7.0",
+		"grunt-contrib-watch": "~0.6.1",
+		"grunt-wrap2000": "~0.1.0",
+		"minimist": "~1.1.0",
 		"mocha": "~2.1.0"
-	}
+	},
+	"scripts": {
+		"dev": "node test/browser",
+		"test": "./node_modules/.bin/mocha test"
+	},
+	"license": "MIT",
+	"keywords": [
+		"meteor",
+		"tracker",
+		"deps",
+		"dependencies",
+		"reactive",
+		"autorun",
+		"depend"
+	]
 }
