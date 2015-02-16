@@ -443,3 +443,67 @@ describe("Meteor Tracker tests", function() {
 		}).to.throw(/foo/);
 	});
 })
+
+describe("Tracker Contexts", function() {
+
+	it("executes computation with context", function() {
+		var ctx = {};
+		var runCount = 0;
+		var run = Tracker.autorun(function() {
+			expect(this).to.equal(ctx);
+			runCount++;
+		}, ctx);
+
+		expect(runCount).to.equal(1);
+		run.invalidate();
+		Tracker.flush();
+		expect(runCount).to.equal(2);
+	});
+
+	it("executes onInvalidate with computation context", function() {
+		var ctx = {};
+		var runCount = 0;
+		var run = Tracker.autorun(function(c) {
+			c.onInvalidate(function() {
+				expect(this).to.equal(ctx);
+				runCount++;
+			});
+		}, ctx);
+
+		expect(runCount).to.equal(0);
+		run.invalidate();
+		Tracker.flush();
+		expect(runCount).to.equal(1);
+	});
+
+	it("executes onInvalidate with passed context", function() {
+		var ctx = {};
+		var runCount = 0;
+		var run = Tracker.autorun(function(c) {
+			c.onInvalidate(function() {
+				expect(this).to.equal(ctx);
+				runCount++;
+			}, ctx);
+		}, {});
+
+		expect(runCount).to.equal(0);
+		run.invalidate();
+		Tracker.flush();
+		expect(runCount).to.equal(1);
+	});
+
+	it("executes afterFlush with context", function() {
+		var ctx = {};
+		var runCount = 0;
+
+		Tracker.afterFlush(function() {
+			expect(this).to.equal(ctx);
+			runCount++;
+		}, ctx);
+
+		expect(runCount).to.equal(0);
+		Tracker.flush();
+		expect(runCount).to.equal(1);
+	});
+
+});
