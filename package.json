@@ -1,6 +1,6 @@
 {
 	"name": "trackr",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"description": "A fork of Meteor Tracker.",
 	"main": "./trackr.js",
 	"publishConfig": {
