@@ -7,7 +7,7 @@
  * @namespace Trackr
  * @summary The namespace for Trackr-related methods.
  */
-Trackr = module.exports = {};
+var Trackr = module.exports = {};
 
 // http://docs.meteor.com/#tracker_active
 
