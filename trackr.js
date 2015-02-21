@@ -490,11 +490,15 @@ Trackr.nonreactive = function (f, ctx) {
 	}
 };
 
-// like nonreactive but makes a function
+// like nonreactive but makes a function instead
 Trackr.nonReactable = 
 Trackr.nonreactable = function (f, ctx) {
 	return function() {
-		return Trackr.nonreactive(f, ctx);
+		var args = arguments;
+		if (ctx == null) ctx = this;
+		return Trackr.nonreactive(function() {
+			return f.apply(ctx, args);
+		});
 	};
 };
 

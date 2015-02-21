@@ -506,4 +506,55 @@ describe("Tracker Contexts", function() {
 		expect(runCount).to.equal(1);
 	});
 
+	it("executes nonreactive with context", function() {
+		var ctx = {};
+		var ret = 12345;
+		var runCount = 0;
+
+		var val = Tracker.nonreactive(function() {
+			expect(this).to.equal(ctx);
+			runCount++;
+			return ret;
+		}, ctx)
+
+		expect(val).to.equal(ret);
+		expect(runCount).to.equal(1);
+	});
+
+	it("executes nonreactable with bound context", function() {
+		var ctx = {};
+		var arg = "hello";
+		var ret = 12345;
+		var runCount = 0;
+
+		var fn = Tracker.nonreactable(function(a) {
+			expect(this).to.equal(ctx);
+			expect(a).to.equal(arg);
+			runCount++;
+			return ret;
+		}, ctx);
+
+		expect(runCount).to.equal(0);
+		var val = fn(arg);
+		expect(val).to.equal(ret);
+		expect(runCount).to.equal(1);
+	});
+
+	it("executes nonreactable with unbound context", function() {
+		var ctx = {};
+		var ret = 12345;
+		var runCount = 0;
+
+		var fn = Tracker.nonreactable(function() {
+			expect(this).to.equal(ctx);
+			runCount++;
+			return ret;
+		});
+
+		expect(runCount).to.equal(0);
+		var val = fn.call(ctx);
+		expect(val).to.equal(ret);
+		expect(runCount).to.equal(1);
+	});
+
 });
