@@ -20,6 +20,7 @@
 		"grunt-wrap2000": "~0.1.0",
 		"minimist": "~1.1.0",
 		"mocha": "~2.1.0",
+		"underscore": "~1.8.2"
 	},
 	"scripts": {
 		"dev": "node test/browser",

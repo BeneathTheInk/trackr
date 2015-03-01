@@ -1,0 +1,6 @@
+{
+	"port": 8000,
+	"build-task": "test",
+	"watch-task": "watch:test",
+	"bundle-path": "/dist/trackr.test.js"
+}

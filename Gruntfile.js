@@ -31,21 +31,21 @@ module.exports = function(grunt) {
 				src: 'dist/trackr.js',
 				dest: 'dist/trackr.js',
 				options: {
-					header: "/*\n * Trackr\n * Copyright (c) 2014 Beneath the Ink, Inc.\n * Copyright (C) 2011--2015 Meteor Development Group\n * MIT License\n * Version <%= pkg.version %>\n */\n"
+					header: "/*\n * Trackr\n * Copyright (c) 2015 Beneath the Ink, Inc.\n * Copyright (C) 2011--2015 Meteor Development Group\n * MIT License\n * Version <%= pkg.version %>\n */\n"
 				}
 			},
 			dev: {
 				src: 'dist/trackr.dev.js',
 				dest: 'dist/trackr.dev.js',
 				options: {
-					header: "/*\n * Trackr\n * Copyright (c) 2014 Beneath the Ink, Inc.\n * Copyright (C) 2011--2015 Meteor Development Group\n * MIT License\n * Version <%= pkg.version %>\n */\n"
+					header: "/*\n * Trackr\n * Copyright (c) 2015 Beneath the Ink, Inc.\n * Copyright (C) 2011--2015 Meteor Development Group\n * MIT License\n * Version <%= pkg.version %>\n */\n"
 				}
 			},
 			test: {
 				src: 'dist/trackr.test.js',
 				dest: 'dist/trackr.test.js',
 				options: {
-					header: "/*\n * Trackr Tests\n * Copyright (c) 2014 Beneath the Ink, Inc.\n * Copyright (C) 2011--2015 Meteor Development Group\n * MIT License\n * Version <%= pkg.version %>\n */\n"
+					header: "/*\n * Trackr Tests\n * Copyright (c) 2015 Beneath the Ink, Inc.\n * Copyright (C) 2011--2015 Meteor Development Group\n * MIT License\n * Version <%= pkg.version %>\n */\n"
 				}
 			}
 		},
@@ -57,7 +57,7 @@ module.exports = function(grunt) {
 		},
 		watch: {
 			test: {
-				files: [ "lib/**/*", "test/*.js" ],
+				files: [ "trackr.js", "test/*.js" ],
 				tasks: [ 'test' ],
 				options: { spawn: false }
 			}
@@ -74,13 +74,9 @@ module.exports = function(grunt) {
 	grunt.registerTask('compile-test', [ 'browserify:test', 'wrap2000:test' ]);
 	grunt.registerTask('compile-dist', [ 'browserify:dist', 'wrap2000:dist', 'uglify:dist' ]);
 
-	grunt.registerTask('build-dev', [ 'clean', 'compile-dev' ]);
-	grunt.registerTask('build-test', [ 'clean', 'compile-test' ]);
-	grunt.registerTask('build-dist', [ 'clean', 'compile-dist' ]);
-
-	grunt.registerTask('dev', [ 'build-dev' ]);
-	grunt.registerTask('test', [ 'build-test', 'watch:test' ]);
-	grunt.registerTask('dist', [ 'build-dist'  ]);
+	grunt.registerTask('dev', [ 'clean', 'compile-dev' ]);
+	grunt.registerTask('test', [ 'clean', 'compile-test' ]);
+	grunt.registerTask('dist', [ 'clean', 'compile-dist' ]);
 
 	grunt.registerTask('default', [ 'clean', 'compile-dist', 'compile-dev' ]);
 
