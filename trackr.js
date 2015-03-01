@@ -103,9 +103,18 @@ var throwFirstError = false;
 
 var afterFlushCallbacks = [];
 
+// look for a requestAnimationFrame as that is preferable over nextTick or setImmediate
+var requestAnimationFrame = typeof window !== "undefined" ?
+	window.requestAnimationFrame ||
+	window.mozRequestAnimationFrame ||
+	window.webkitRequestAnimationFrame ||
+	window.oRequestAnimationFrame :
+	null;
+
 // controls the deferral
-Trackr.nextTick = typeof process !== "undefined" ? process.nextTick : 
-	function (f) { setTimeout(f, 0); };
+Trackr.nextTick = requestAnimationFrame != null ? requestAnimationFrame.bind(window) :
+	typeof process !== "undefined" ? process.nextTick :
+	function (f) { setTimeout(f, 16); };
 
 var requireFlush = function () {
 	if (! willFlush) {
