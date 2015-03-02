@@ -2,7 +2,27 @@
 
 This is a fork of [Meteor Tracker](https://github.com/meteor/meteor/tree/devel/packages/tracker), the library formerly known as Meteor Deps. It has been repackaged into a standalone library that is ready to use in Node.js and the browser.
 
-Trackr's API is almost identical to Meteor's version. Check out their documentation on [Tracker](http://docs.meteor.com/#/full/tracker) and [Using Deps](http://manual.meteor.com/#deps) since they are both fully relevant.
+Trackr's API is completely backwards compatible with Meteor's version. If you are not familiar with Meteor Tracker, or reactive programming in general, I recommend reading the [Meteor Manual entry on Deps](http://manual.meteor.com/#deps). The concepts it teaches apply here as well.
+
+## Install
+
+Download the latest version from the [release page](https://github.com/BeneathTheInk/Trackr/releases) and use via a script tag. The variable `Trackr` will be attached to `window`.
+
+```html
+<script type="text/javascript" src="trackr.js"></script>
+```
+
+For Browserify and Node.js, install via NPM and require as necessary.
+
+```sh
+$ npm install templejs
+```
+
+```js
+var Trackr = require("trackr");
+```
+
+## Usage
 
 The only change that has been made is the addition of function context. Method context (`this`) can be added as an optional argument to the end of methods that accept functions. For example, here is how you would use `autorun()` with context:
 
