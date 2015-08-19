@@ -15,7 +15,7 @@ Download the latest version from the [release page](https://github.com/BeneathTh
 For Browserify and Node.js, install via NPM and require as necessary.
 
 ```sh
-$ npm install templejs
+$ npm install trackr
 ```
 
 ```js
@@ -29,9 +29,21 @@ The only change that has been made is the addition of function context. Method c
 ```javascript
 var ctx = { foo: "bar" };
 
-Trackr.autorun(function() {
+var comp = Trackr.autorun(function() {
     console.log(this.foo); // "bar"
-}, ctx);
+}, { /* options */ }, ctx);
 ```
 
 This also works for `onInvalidate()` and `afterFlush()` callbacks. `onInvalidate()` will fallback on the context provided to the computation if none is provided.
+
+```javascript
+comp.onInvalidate(function() {
+    console.log(this.foo); // "bar"
+});
+
+Trackr.afterFlush(function() {
+    console.log(this.hello); // "world"
+}, {
+    hello: "world"
+});
+```

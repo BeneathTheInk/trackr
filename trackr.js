@@ -1,13 +1,19 @@
-//////////////////////////////////////////////////
+/////////////////////////////////////////////////////
 // Package docs at http://docs.meteor.com/#tracker //
-// Last merge: https://github.com/meteor/meteor/blob/d07ff8e99cfde21cf113da13d35d387b0ed309a3/packages/tracker/tracker.js //
-//////////////////////////////////////////////////
+// Last merge: https://github.com/meteor/meteor/blob/696876b1848e4d6a920143422c2c50c4501c85a3/packages/tracker/tracker.js //
+/////////////////////////////////////////////////////
+
+// check for global and use that one instead of loading a new one
+if (typeof global.Trackr !== "undefined") {
+	module.exports = global.Trackr;
+	return;
+}
 
 /**
  * @namespace Trackr
  * @summary The namespace for Trackr-related methods.
  */
-var Trackr = module.exports = {};
+var Trackr = global.Trackr = module.exports = {};
 
 // http://docs.meteor.com/#tracker_active
 
@@ -21,11 +27,18 @@ Trackr.active = false;
 // http://docs.meteor.com/#tracker_currentcomputation
 
 /**
- * @summary The current computation, or `null` if there isn't one.  The current computation is the [`Trackr.Computation`](#tracker_computation) object created by the innermost active call to `Trackr.autorun`, and it's the computation that gains dependencies when reactive data sources are accessed.
+ * @summary The current computation, or `null` if there isn't one.	The current computation is the [`Trackr.Computation`](#tracker_computation) object created by the innermost active call to `Trackr.autorun`, and it's the computation that gains dependencies when reactive data sources are accessed.
  * @locus Client
  * @type {Trackr.Computation}
  */
 Trackr.currentComputation = null;
+
+// References to all computations created within the Trackr by id.
+// Keeping these references on an underscore property gives more control to
+// tooling and packages extending Trackr without increasing the API surface.
+// These can used to monkey-patch computations, their functions, use
+// computation ids for tracking, etc.
+Trackr._computations = {};
 
 var setCurrentComputation = function (c) {
 	Trackr.currentComputation = c;
@@ -33,34 +46,29 @@ var setCurrentComputation = function (c) {
 };
 
 var _debugFunc = function () {
-	// We want this code to work without Meteor, and also without
-	// "console" (which is technically non-standard and may be missing
-	// on some browser we come across, like it was on IE 7).
-	//
-	// Lazy evaluation because `Meteor` does not exist right away.(??)
-	return (typeof Meteor !== "undefined" ? Meteor._debug :
-					((typeof console !== "undefined") && console.log ?
-					 function () { console.log.apply(console, arguments); } :
-					 function () {}));
+	return (typeof console !== "undefined") && console.error ?
+			 function () { console.error.apply(console, arguments); } :
+			 function () {};
 };
 
 var _throwOrLog = function (from, e) {
 	if (throwFirstError) {
 		throw e;
 	} else {
-		var messageAndStack;
-		if (e.stack && e.message) {
+		var printArgs = ["Exception from Trackr " + from + " function:"];
+		if (e.stack && e.message && e.name) {
 			var idx = e.stack.indexOf(e.message);
-			if (idx >= 0 && idx <= 10) // allow for "Error: " (at least 7)
-				messageAndStack = e.stack; // message is part of e.stack, as in Chrome
-			else
-				messageAndStack = e.message +
-				(e.stack.charAt(0) === '\n' ? '' : '\n') + e.stack; // e.g. Safari
-		} else {
-			messageAndStack = e.stack || e.message;
+			if (idx < 0 || idx > e.name.length + 2) { // check for "Error: "
+				// message is not part of the stack
+				var message = e.name + ": " + e.message;
+				printArgs.push(message);
+			}
 		}
-		_debugFunc()("Exception from Trackr " + from + " function:",
-								 messageAndStack);
+		printArgs.push(e.stack);
+
+		for (var i = 0; i < printArgs.length; i++) {
+			_debugFunc()(printArgs[i]);
+		}
 	}
 };
 
@@ -70,16 +78,7 @@ var _throwOrLog = function (from, e) {
 // no-op). This has the benefit of not adding an unnecessary stack
 // frame on the client.
 var withNoYieldsAllowed = function (f) {
-	if ((typeof Meteor === 'undefined') || Meteor.isClient) {
-		return f;
-	} else {
-		return function () {
-			var args = arguments;
-			Meteor._noYieldsAllowed(function () {
-				f.apply(null, args);
-			});
-		};
-	}
+	return f;
 };
 
 var nextId = 1;
@@ -90,7 +89,7 @@ var willFlush = false;
 // `true` if we are in Trackr.flush now
 var inFlush = false;
 // `true` if we are computing a computation now, either first time
-// or recompute.  This matches Trackr.active unless we are inside
+// or recompute.	This matches Trackr.active unless we are inside
 // Trackr.nonreactive, which nullfies currentComputation even though
 // an enclosing computation may still be running.
 var inCompute = false;
@@ -103,22 +102,11 @@ var throwFirstError = false;
 
 var afterFlushCallbacks = [];
 
-// look for a requestAnimationFrame as that is preferable over nextTick or setImmediate
-var requestAnimationFrame = typeof window !== "undefined" ?
-	window.requestAnimationFrame ||
-	window.mozRequestAnimationFrame ||
-	window.webkitRequestAnimationFrame ||
-	window.oRequestAnimationFrame :
-	null;
-
-// controls the deferral
-Trackr.nextTick = requestAnimationFrame != null ? requestAnimationFrame.bind(window) :
-	typeof process !== "undefined" ? process.nextTick :
-	function (f) { setTimeout(f, 16); };
+var requestAnimationFrame = require("raf");
 
 var requireFlush = function () {
 	if (! willFlush) {
-		Trackr.nextTick(Trackr.flush);
+		requestAnimationFrame(Trackr._runFlush);
 		willFlush = true;
 	}
 };
@@ -139,13 +127,14 @@ var constructingComputation = false;
  * computation.
  * @instancename computation
  */
-Trackr.Computation = function (f, parent, ctx) {
+Trackr.Computation = function (f, parent, options) {
 	if (! constructingComputation)
 		throw new Error(
 			"Trackr.Computation constructor is private; use Trackr.autorun");
 	constructingComputation = false;
 
 	var self = this;
+	options = options || {};
 
 	// http://docs.meteor.com/#computation_stopped
 
@@ -154,7 +143,7 @@ Trackr.Computation = function (f, parent, ctx) {
 	 * @locus Client
 	 * @memberOf Trackr.Computation
 	 * @instance
-	 * @name  stopped
+	 * @name	stopped
 	 */
 	self.stopped = false;
 
@@ -165,7 +154,7 @@ Trackr.Computation = function (f, parent, ctx) {
 	 * @locus Client
 	 * @memberOf Trackr.Computation
 	 * @instance
-	 * @name  invalidated
+	 * @name	invalidated
 	 * @type {Boolean}
 	 */
 	self.invalidated = false;
@@ -177,19 +166,24 @@ Trackr.Computation = function (f, parent, ctx) {
 	 * @locus Client
 	 * @memberOf Trackr.Computation
 	 * @instance
-	 * @name  firstRun
+	 * @name	firstRun
 	 * @type {Boolean}
 	 */
 	self.firstRun = true;
 
 	self._id = nextId++;
 	self._onInvalidateCallbacks = [];
+	self._onStopCallbacks = [];
 	// the plan is at some point to use the parent relation
 	// to constrain the order that computations are processed
 	self._parent = parent;
 	self._func = f;
+	self._onError = options.onError;
 	self._recomputing = false;
-	self._context = ctx || null;
+	self._context = options.context || null;
+
+	// Register the computation within the global Trackr.
+	Trackr._computations[self._id] = self;
 
 	var errored = true;
 	try {
@@ -205,7 +199,7 @@ Trackr.Computation = function (f, parent, ctx) {
 // http://docs.meteor.com/#computation_oninvalidate
 
 /**
- * @summary Registers `callback` to run when this computation is next invalidated, or runs it immediately if the computation is already invalidated.  The callback is run exactly once and not upon future invalidations unless `onInvalidate` is called again after the computation becomes valid again.
+ * @summary Registers `callback` to run when this computation is next invalidated, or runs it immediately if the computation is already invalidated.	The callback is run exactly once and not upon future invalidations unless `onInvalidate` is called again after the computation becomes valid again.
  * @locus Client
  * @param {Function} callback Function to be called on invalidation. Receives one argument, the computation that was invalidated.
  */
@@ -217,10 +211,30 @@ Trackr.Computation.prototype.onInvalidate = function (f, ctx) {
 
 	if (self.invalidated) {
 		Trackr.nonreactive(function () {
-			withNoYieldsAllowed(f).call(ctx !== void 0 ? ctx : self._context, self);
+			withNoYieldsAllowed(f).call(ctx || self._context, self);
 		});
 	} else {
 		self._onInvalidateCallbacks.push({ fn: f, ctx: ctx });
+	}
+};
+
+/**
+ * @summary Registers `callback` to run when this computation is stopped, or runs it immediately if the computation is already stopped.	The callback is run after any `onInvalidate` callbacks.
+ * @locus Client
+ * @param {Function} callback Function to be called on stop. Receives one argument, the computation that was stopped.
+ */
+Trackr.Computation.prototype.onStop = function (f, ctx) {
+	var self = this;
+
+	if (typeof f !== 'function')
+		throw new Error("onStop requires a function");
+
+	if (self.stopped) {
+		Trackr.nonreactive(function () {
+			withNoYieldsAllowed(f).call(ctx || self._context, self);
+		});
+	} else {
+		self._onStopCallbacks.push({ fn: f, ctx: ctx });
 	}
 };
 
@@ -246,7 +260,7 @@ Trackr.Computation.prototype.invalidate = function () {
 		// self.invalidated === true.
 		for(var i = 0, f; f = self._onInvalidateCallbacks[i]; i++) {
 			Trackr.nonreactive(function () {
-				withNoYieldsAllowed(f.fn).call(f.ctx !== void 0 ? f.ctx : self._context, self);
+				withNoYieldsAllowed(f.fn).call(f.ctx || self._context, self);
 			});
 		}
 		self._onInvalidateCallbacks = [];
@@ -260,9 +274,19 @@ Trackr.Computation.prototype.invalidate = function () {
  * @locus Client
  */
 Trackr.Computation.prototype.stop = function () {
-	if (! this.stopped) {
-		this.stopped = true;
-		this.invalidate();
+	var self = this;
+
+	if (! self.stopped) {
+		self.stopped = true;
+		self.invalidate();
+		// Unregister from global Trackr.
+		delete Trackr._computations[self._id];
+		for(var i = 0, f; f = self._onStopCallbacks[i]; i++) {
+			Trackr.nonreactive(function () {
+				withNoYieldsAllowed(f.fn).call(f.ctx || self._context, self);
+			});
+		}
+		self._onStopCallbacks = [];
 	}
 };
 
@@ -282,23 +306,26 @@ Trackr.Computation.prototype._compute = function () {
 	}
 };
 
+Trackr.Computation.prototype._needsRecompute = function () {
+	var self = this;
+	return self.invalidated && ! self.stopped;
+};
+
 Trackr.Computation.prototype._recompute = function () {
 	var self = this;
 
 	self._recomputing = true;
 	try {
-		while (self.invalidated && ! self.stopped) {
+		if (self._needsRecompute()) {
 			try {
 				self._compute();
 			} catch (e) {
-				_throwOrLog("recompute", e);
+				if (self._onError) {
+					self._onError(e);
+				} else {
+					_throwOrLog("recompute", e);
+				}
 			}
-			// If _compute() invalidated us, we run again immediately.
-			// A computation that invalidates itself indefinitely is an
-			// infinite loop, of course.
-			//
-			// We could put an iteration counter here and catch run-away
-			// loops.
 		}
 	} finally {
 		self._recomputing = false;
@@ -324,12 +351,12 @@ Trackr.Dependency = function () {
 // http://docs.meteor.com/#dependency_depend
 //
 // Adds `computation` to this set if it is not already
-// present.  Returns true if `computation` is a new member of the set.
+// present.	Returns true if `computation` is a new member of the set.
 // If no argument, defaults to currentComputation, or does nothing
 // if there is no currentComputation.
 
 /**
- * @summary Declares that the current computation (or `fromComputation` if given) depends on `dependency`.  The computation will be invalidated the next time `dependency` changes.
+ * @summary Declares that the current computation (or `fromComputation` if given) depends on `dependency`.	The computation will be invalidated the next time `dependency` changes.
 
 If there is no current computation and `depend()` is called with no arguments, it does nothing and returns false.
 
@@ -389,15 +416,23 @@ Trackr.Dependency.prototype.hasDependents = function () {
  * @summary Process all reactive updates immediately and ensure that all invalidated computations are rerun.
  * @locus Client
  */
-Trackr.flush = function (_opts) {
+Trackr.flush = function (options) {
+	Trackr._runFlush({ finishSynchronously: true,
+											throwFirstError: options && options._throwFirstError });
+};
+
+// Run all pending computations and afterFlush callbacks.	If we were not called
+// directly via Trackr.flush, this may return before they're all done to allow
+// the event loop to run a little before continuing.
+Trackr._runFlush = function (options) {
 	// XXX What part of the comment below is still true? (We no longer
 	// have Spark)
 	//
 	// Nested flush could plausibly happen if, say, a flush causes
 	// DOM mutation, which causes a "blur" event, which runs an
-	// app event handler that calls Trackr.flush.  At the moment
+	// app event handler that calls Trackr.flush.	At the moment
 	// Spark blocks event handlers during DOM mutation anyway,
-	// because the LiveRange tree isn't valid.  And we don't have
+	// because the LiveRange tree isn't valid.	And we don't have
 	// any useful notion of a nested flush.
 	//
 	// https://app.asana.com/0/159908330244/385138233856
@@ -407,10 +442,13 @@ Trackr.flush = function (_opts) {
 	if (inCompute)
 		throw new Error("Can't flush inside Trackr.autorun");
 
+	options = options || {};
+
 	inFlush = true;
 	willFlush = true;
-	throwFirstError = !! (_opts && _opts._throwFirstError);
+	throwFirstError = !! options.throwFirstError;
 
+	var recomputedCount = 0;
 	var finishedTry = false;
 	try {
 		while (pendingComputations.length ||
@@ -420,6 +458,14 @@ Trackr.flush = function (_opts) {
 			while (pendingComputations.length) {
 				var comp = pendingComputations.shift();
 				comp._recompute();
+				if (comp._needsRecompute()) {
+					pendingComputations.unshift(comp);
+				}
+
+				if (! options.finishSynchronously && ++recomputedCount > 1000) {
+					finishedTry = true;
+					return;
+				}
 			}
 
 			if (afterFlushCallbacks.length) {
@@ -436,12 +482,25 @@ Trackr.flush = function (_opts) {
 		finishedTry = true;
 	} finally {
 		if (! finishedTry) {
-			// we're erroring
+			// we're erroring due to throwFirstError being true.
 			inFlush = false; // needed before calling `Trackr.flush()` again
-			Trackr.flush({_throwFirstError: false}); // finish flushing
+			// finish flushing
+			Trackr._runFlush({
+				finishSynchronously: options.finishSynchronously,
+				throwFirstError: false
+			});
 		}
 		willFlush = false;
 		inFlush = false;
+		if (pendingComputations.length || afterFlushCallbacks.length) {
+			// We're yielding because we ran a bunch of computations and we aren't
+			// required to finish synchronously, so we'd like to give the event loop a
+			// chance. We should flush again soon.
+			if (options.finishSynchronously) {
+				throw new Error("still have more to do?");	// shouldn't happen
+			}
+			setTimeout(requireFlush, 10);
+		}
 	}
 };
 
@@ -456,17 +515,32 @@ Trackr.flush = function (_opts) {
 // so that it is stopped if the current computation is invalidated.
 
 /**
- * @summary Run a function now and rerun it later whenever its dependencies change. Returns a Computation object that can be used to stop or observe the rerunning.
+ * @callback Trackr.ComputationFunction
+ * @param {Trackr.Computation}
+ */
+/**
+ * @summary Run a function now and rerun it later whenever its dependencies
+ * change. Returns a Computation object that can be used to stop or observe the
+ * rerunning.
  * @locus Client
- * @param {Function} runFunc The function to run. It receives one argument: the Computation object that will be returned.
+ * @param {Trackr.ComputationFunction} runFunc The function to run. It receives
+ * one argument: the Computation object that will be returned.
+ * @param {Object} [options]
+ * @param {Function} options.onError Optional. The function to run when an error
+ * happens in the Computation. The only argument it recieves is the Error
+ * thrown. Defaults to the error being logged to the console.
  * @returns {Trackr.Computation}
  */
-Trackr.autorun = function (f, ctx) {
+Trackr.autorun = function (f, options, ctx) {
 	if (typeof f !== 'function')
 		throw new Error('Trackr.autorun requires a function argument');
 
+	options = options || {};
+	if (ctx) options.context = ctx;
+
 	constructingComputation = true;
-	var c = new Trackr.Computation(f, Trackr.currentComputation, ctx);
+	var c = new Trackr.Computation(
+		f, Trackr.currentComputation, options);
 
 	if (Trackr.active)
 		Trackr.onInvalidate(function () {
@@ -479,7 +553,7 @@ Trackr.autorun = function (f, ctx) {
 // http://docs.meteor.com/#tracker_nonreactive
 //
 // Run `f` with no current computation, returning the return value
-// of `f`.  Used to turn off reactivity for the duration of `f`,
+// of `f`.	Used to turn off reactivity for the duration of `f`,
 // so that reactive data sources accessed by `f` will not result in any
 // computations being invalidated.
 
@@ -488,7 +562,7 @@ Trackr.autorun = function (f, ctx) {
  * @locus Client
  * @param {Function} func A function to call immediately.
  */
-Trackr.nonReactive = 
+Trackr.nonReactive =
 Trackr.nonreactive = function (f, ctx) {
 	var previous = Trackr.currentComputation;
 	setCurrentComputation(null);
@@ -500,7 +574,7 @@ Trackr.nonreactive = function (f, ctx) {
 };
 
 // like nonreactive but makes a function instead
-Trackr.nonReactable = 
+Trackr.nonReactable =
 Trackr.nonreactable = function (f, ctx) {
 	return function() {
 		var args = arguments;
@@ -528,7 +602,7 @@ Trackr.onInvalidate = function (f, ctx) {
 // http://docs.meteor.com/#tracker_afterflush
 
 /**
- * @summary Schedules a function to be called during the next flush, or later in the current flush if one is in progress, after all invalidated computations have been rerun.  The function will be run once and not on subsequent flushes unless `afterFlush` is called again.
+ * @summary Schedules a function to be called during the next flush, or later in the current flush if one is in progress, after all invalidated computations have been rerun.	The function will be run once and not on subsequent flushes unless `afterFlush` is called again.
  * @locus Client
  * @param {Function} callback A function to call at flush time.
  */
