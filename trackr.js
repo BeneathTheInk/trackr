@@ -578,9 +578,9 @@ Trackr.nonReactable =
 Trackr.nonreactable = function (f, ctx) {
 	return function() {
 		var args = arguments;
-		if (ctx == null) ctx = this;
+		var self = this;
 		return Trackr.nonreactive(function() {
-			return f.apply(ctx, args);
+			return f.apply(ctx || self, args);
 		});
 	};
 };
