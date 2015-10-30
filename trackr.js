@@ -3,17 +3,19 @@
 // Last merge: https://github.com/meteor/meteor/blob/696876b1848e4d6a920143422c2c50c4501c85a3/packages/tracker/tracker.js //
 /////////////////////////////////////////////////////
 
+//
+module.exports = (function() {
+
 // check for global and use that one instead of loading a new one
 if (typeof global.Trackr !== "undefined") {
-	module.exports = global.Trackr;
-	return;
+	return global.Trackr;
 }
 
 /**
  * @namespace Trackr
  * @summary The namespace for Trackr-related methods.
  */
-var Trackr = global.Trackr = module.exports = {};
+var Trackr = global.Trackr = {};
 
 // http://docs.meteor.com/#tracker_active
 
@@ -610,3 +612,8 @@ Trackr.afterFlush = function (f, ctx) {
 	afterFlushCallbacks.push({ fn: f, ctx: ctx });
 	requireFlush();
 };
+
+// export it
+return Trackr;
+
+})();
